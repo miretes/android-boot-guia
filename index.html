@@ -3,138 +3,230 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Arranque de Android: Boot ROM → Zygote</title>
+  <title>Proceso de arranque de Android | Boot ROM → Zygote</title>
   <link rel="stylesheet" href="styles.css" />
-  <meta name="description" content="Guía interactiva verificada del proceso de arranque de Android desde Boot ROM hasta Zygote, basada en documentación oficial AOSP/source.android.com." />
 </head>
 <body>
-  <header class="hero">
-    <nav class="nav">
-      <a href="#mapa">Mapa</a>
-      <a href="#timeline">Timeline</a>
-      <a href="#initrc">init.rc</a>
-      <a href="#forense">Notas forenses</a>
-      <a href="#fuentes">Fuentes</a>
-    </nav>
-    <div class="hero-grid">
-      <div>
-        <p class="eyebrow">Guía interactiva verificada · Android/AOSP</p>
-        <h1>Proceso de arranque de Android: desde Boot ROM hasta Zygote</h1>
-        <p class="lead">
-          Recorrido paso a paso por la cadena de arranque: Boot ROM, Bootloader,
-          carga del kernel, primer y segundo estadio de <code>init</code>, servicios nativos,
-          Zygote y arranque del System Server.
-        </p>
-        <div class="buttons">
-          <a class="button primary" href="#timeline">Empezar recorrido</a>
-          <a class="button secondary" href="#fuentes">Ver fuentes oficiales</a>
-        </div>
-      </div>
-      <div class="status-card">
-        <h2>Cadena resumida</h2>
-        <ol>
-          <li>Boot ROM ejecuta código inicial del SoC.</li>
-          <li>Bootloader inicializa memoria, verifica imágenes y elige slot.</li>
-          <li>Kernel Linux arranca con ramdisk / init_boot / vendor_boot según versión.</li>
-          <li><code>init</code> monta particiones, carga SELinux y ejecuta scripts <code>.rc</code>.</li>
-          <li>Zygote prepara ART y se convierte en raíz de procesos Java/Kotlin.</li>
-        </ol>
-        <p class="small">La secuencia exacta depende de versión Android, SoC, particiones, AVB, A/B y configuración del fabricante.</p>
-      </div>
+<header class="hero">
+  <nav class="nav">
+    <a href="#overview">Resumen</a>
+    <a href="#timeline">Timeline</a>
+    <a href="#avb">Verified Boot</a>
+    <a href="#partitions">Particiones</a>
+    <a href="#init">Init</a>
+    <a href="#zygote">Zygote</a>
+    <a href="#lab">Comandos</a>
+    <a href="#sources">Fuentes</a>
+  </nav>
+  <section class="hero-inner">
+    <p class="eyebrow">Android boot process · AOSP</p>
+    <h1>Arranque de Android: Boot ROM → Bootloader → Kernel → Init → Zygote</h1>
+    <p class="lead">
+      Guía interactiva centrada únicamente en el proceso técnico de arranque de Android.
+      Sin enfoque forense: arquitectura, etapas, particiones, Verified Boot, init y Zygote.
+    </p>
+    <div class="hero-actions">
+      <a class="btn primary" href="#overview">Ver diagrama</a>
+      <a class="btn" href="#timeline">Seguir paso a paso</a>
     </div>
-  </header>
+  </section>
+</header>
 
-  <main>
-    <section id="mapa" class="section">
-      <div class="section-title">
-        <p class="eyebrow">Diagrama animado</p>
-        <h2>Mapa del arranque</h2>
-        <p>Haz clic en una fase para ver su función, evidencias asociadas y documentación oficial.</p>
-      </div>
+<main>
+<section id="overview" class="section">
+  <div class="title">
+    <p class="eyebrow">Vista general</p>
+    <h2>Flujo principal documentado por Android</h2>
+    <p>La documentación de Android resume el arranque como una cadena: Boot ROM, Bootloader, Kernel, Init, Zygote y System Server.</p>
+  </div>
 
-      <div class="flow" id="flow">
-        <button class="node active" data-stage="rom">Boot ROM</button>
-        <span class="arrow">→</span>
-        <button class="node" data-stage="bootloader">Bootloader</button>
-        <span class="arrow">→</span>
-        <button class="node" data-stage="kernel">Kernel Loading</button>
-        <span class="arrow">→</span>
-        <button class="node" data-stage="init1">First-stage init</button>
-        <span class="arrow">→</span>
-        <button class="node" data-stage="init2">Second-stage init</button>
-        <span class="arrow">→</span>
-        <button class="node" data-stage="zygote">Zygote</button>
-      </div>
+  <div class="boot-map">
+    <button class="step active" data-step="rom">Boot ROM</button>
+    <button class="step" data-step="bl">Bootloader</button>
+    <button class="step" data-step="kernel">Kernel</button>
+    <button class="step" data-step="firstinit">First-stage init</button>
+    <button class="step" data-step="secondinit">Second-stage init</button>
+    <button class="step" data-step="zygote">Zygote</button>
+    <button class="step" data-step="systemserver">System Server</button>
+  </div>
 
-      <article class="stage-card" id="stageCard"></article>
-    </section>
+  <article class="panel stage-panel" id="stagePanel"></article>
+</section>
 
-    <section id="timeline" class="section alt">
-      <div class="section-title">
-        <p class="eyebrow">Timeline detallada</p>
-        <h2>Etapas críticas</h2>
-      </div>
-      <div class="timeline" id="timelineContainer"></div>
-    </section>
+<section id="timeline" class="section tint">
+  <div class="title">
+    <p class="eyebrow">Timeline</p>
+    <h2>Arranque explicado por fases</h2>
+    <p>Los tiempos son orientativos. Android advierte que el tiempo real depende de hardware, kernel, módulos, ramdisk, servicios y configuración del fabricante.</p>
+  </div>
+  <div class="timeline" id="timelineItems"></div>
+</section>
 
-    <section id="initrc" class="section">
-      <div class="section-title">
-        <p class="eyebrow">Ejemplo comentado</p>
-        <h2>Fragmento tipo de <code>init.rc</code></h2>
-        <p>
-          El lenguaje de Android Init se organiza en acciones, comandos, servicios, opciones e imports.
-          El ejemplo siguiente es didáctico y está basado en patrones oficiales de AOSP; no sustituye el
-          <code>init.rc</code> real de un dispositivo concreto.
-        </p>
-      </div>
-      <div class="code-layout">
-        <pre><code id="initCode"></code></pre>
-        <div class="explain" id="codeExplain"></div>
-      </div>
-    </section>
+<section id="avb" class="section">
+  <div class="title">
+    <p class="eyebrow">Verified Boot</p>
+    <h2>Cadena de confianza durante el arranque</h2>
+    <p>Android Verified Boot comunica su estado a Android mediante parámetros del kernel o bootconfig en Android 12 y superior.</p>
+  </div>
 
-    <section id="forense" class="section alt">
-      <div class="section-title">
-        <p class="eyebrow">Lectura forense</p>
-        <h2>Qué mirar sin inventar conclusiones</h2>
-      </div>
-      <div class="cards">
-        <article>
-          <h3>Bootloader / AVB</h3>
-          <p>Estado de bloqueo, verified boot state, particiones vbmeta/boot/vendor_boot/init_boot y coherencia con el modelo/versiones.</p>
-        </article>
-        <article>
-          <h3>Kernel / ramdisk</h3>
-          <p>Imagen de arranque, módulos tempranos, parámetros androidboot, ramdisk genérico/vendor y fstab.</p>
-        </article>
-        <article>
-          <h3>Init / persistencia</h3>
-          <p>Scripts <code>init*.rc</code>, servicios añadidos, clases, sockets, propiedades persistentes y binarios ejecutados por init.</p>
-        </article>
-        <article>
-          <h3>Zygote / apps</h3>
-          <p>Relación con procesos Java, System Server, app_process, clases de arranque y namespaces; no atribuir malware solo por presencia de Zygote.</p>
-        </article>
-      </div>
-      <p class="warning">
-        En análisis pericial: documentar versión, fuente del artefacto, hash, método de extracción, limitaciones y trazabilidad. No extrapolar un flujo AOSP genérico a un terminal concreto sin contrastar firmware, fabricante y particiones reales.
-      </p>
-    </section>
+  <div class="chain">
+    <div>Root of Trust</div><span>↓</span>
+    <div>Bootloader</div><span>↓</span>
+    <div>vbmeta</div><span>↓</span>
+    <div>boot / vendor_boot / init_boot</div><span>↓</span>
+    <div>Kernel + ramdisk</div><span>↓</span>
+    <div>Android userspace</div>
+  </div>
 
-    <section id="fuentes" class="section">
-      <div class="section-title">
-        <p class="eyebrow">Documentación oficial</p>
-        <h2>Fuentes contrastadas</h2>
-        <p>Enlaces directos a documentación oficial de Android/AOSP utilizada para construir la guía.</p>
-      </div>
-      <div class="source-grid" id="sources"></div>
-    </section>
-  </main>
+  <div class="grid three">
+    <article class="panel">
+      <h3>green</h3>
+      <p>Dispositivo bloqueado y sin raíz de confianza modificada por el usuario.</p>
+    </article>
+    <article class="panel">
+      <h3>yellow</h3>
+      <p>Dispositivo bloqueado con raíz de confianza configurable por el usuario.</p>
+    </article>
+    <article class="panel">
+      <h3>orange</h3>
+      <p>Dispositivo desbloqueado.</p>
+    </article>
+  </div>
+</section>
 
-  <footer>
-    <p>Guía generada para estudio técnico/forense. Revisar siempre contra la versión concreta de Android y el firmware del dispositivo analizado.</p>
-  </footer>
+<section id="partitions" class="section tint">
+  <div class="title">
+    <p class="eyebrow">Particiones de arranque</p>
+    <h2>boot, vendor_boot e init_boot</h2>
+    <p>La organización cambia según versión y dispositivo. En Android 12, boot contiene GKI y generic ramdisk; en Android 13+, el generic ramdisk se mueve a init_boot.</p>
+  </div>
 
-  <script src="script.js"></script>
+  <div class="compare">
+    <article class="panel">
+      <h3>Android 11/12</h3>
+      <ul>
+        <li><code>boot</code>: kernel/GKI y generic ramdisk.</li>
+        <li><code>vendor_boot</code>: vendor ramdisk y datos dependientes del proveedor.</li>
+        <li><code>vbmeta</code>: metadatos AVB.</li>
+      </ul>
+    </article>
+    <article class="panel">
+      <h3>Android 13+</h3>
+      <ul>
+        <li><code>boot</code>: GKI kernel.</li>
+        <li><code>init_boot</code>: generic ramdisk.</li>
+        <li><code>vendor_boot</code>: vendor ramdisk, DTB según versión.</li>
+      </ul>
+    </article>
+  </div>
+
+  <table>
+    <thead><tr><th>Partición</th><th>Papel en el arranque</th></tr></thead>
+    <tbody>
+      <tr><td><code>boot</code></td><td>Contiene kernel/GKI y, según versión, generic ramdisk.</td></tr>
+      <tr><td><code>init_boot</code></td><td>Desde Android 13+, contiene el generic ramdisk.</td></tr>
+      <tr><td><code>vendor_boot</code></td><td>Contiene vendor ramdisk y datos específicos del proveedor.</td></tr>
+      <tr><td><code>vbmeta</code></td><td>Contiene metadatos de Android Verified Boot.</td></tr>
+      <tr><td><code>system/vendor/product/odm</code></td><td>Particiones de sistema y proveedor montadas durante init.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="init" class="section">
+  <div class="title">
+    <p class="eyebrow">Android Init</p>
+    <h2>Del primer proceso de userspace a los servicios Android</h2>
+    <p>El lenguaje Android Init se compone de Actions, Commands, Services, Options e Imports. Los scripts son lineales y se disparan mediante triggers.</p>
+  </div>
+
+  <div class="code-grid">
+    <pre><code id="initCode"></code></pre>
+    <aside class="panel" id="initNotes"></aside>
+  </div>
+
+  <div class="grid three">
+    <article class="panel">
+      <h3>Actions</h3>
+      <p>Bloques que se ejecutan cuando se activa un trigger, por ejemplo <code>on early-init</code>, <code>on init</code> o <code>on boot</code>.</p>
+    </article>
+    <article class="panel">
+      <h3>Services</h3>
+      <p>Procesos gestionados por init. Incluyen binario, argumentos, clase, usuario, grupo, sockets y comportamiento al reinicio.</p>
+    </article>
+    <article class="panel">
+      <h3>Imports</h3>
+      <p>Permiten cargar otros ficheros <code>.rc</code>, como scripts de zygote, vendor o hardware.</p>
+    </article>
+  </div>
+</section>
+
+<section id="zygote" class="section tint">
+  <div class="title">
+    <p class="eyebrow">Zygote</p>
+    <h2>El punto de partida de los procesos Android de alto nivel</h2>
+    <p>Zygote es iniciado por init mediante <code>app_process</code>/<code>app_process64</code>. Prepara ART, abre sockets y arranca System Server.</p>
+  </div>
+
+  <div class="zygote-diagram">
+    <div>init</div><span>→</span><div>zygote</div><span>→</span><div>System Server</div><span>→</span><div>Framework services</div><span>→</span><div>Launcher / apps</div>
+  </div>
+
+  <div class="grid two">
+    <article class="panel">
+      <h3>¿Por qué existe Zygote?</h3>
+      <p>Permite que los procesos Android compartan una base común cargada previamente. Esto reduce coste de arranque y aprovecha copy-on-write.</p>
+    </article>
+    <article class="panel">
+      <h3>System Server</h3>
+      <p>Desde Zygote arranca System Server, que inicializa servicios centrales del framework como ActivityManager, PackageManager y WindowManager.</p>
+    </article>
+  </div>
+</section>
+
+<section id="lab" class="section">
+  <div class="title">
+    <p class="eyebrow">Comandos útiles</p>
+    <h2>Observación del proceso en un entorno Android</h2>
+    <p>Comandos orientados a comprender el arranque en un dispositivo o entorno de desarrollo. Su disponibilidad depende del build, permisos y modo de depuración.</p>
+  </div>
+
+  <div class="grid two">
+    <article class="panel">
+      <h3>Parámetros de arranque</h3>
+      <pre><code>adb shell cat /proc/cmdline
+adb shell cat /proc/bootconfig</code></pre>
+    </article>
+    <article class="panel">
+      <h3>Servicios gestionados por init</h3>
+      <pre><code>adb shell getprop init.svc.zygote
+adb shell getprop | grep '^\[init.svc'</code></pre>
+    </article>
+    <article class="panel">
+      <h3>Procesos principales</h3>
+      <pre><code>adb shell ps -A | grep zygote
+adb shell ps -A | grep system_server</code></pre>
+    </article>
+    <article class="panel">
+      <h3>Tiempo de arranque</h3>
+      <pre><code>adb logcat -b events | grep boot
+adb shell dmesg | head</code></pre>
+    </article>
+  </div>
+</section>
+
+<section id="sources" class="section tint">
+  <div class="title">
+    <p class="eyebrow">Fuentes oficiales</p>
+    <h2>Documentación usada</h2>
+  </div>
+  <div class="sources" id="sourcesList"></div>
+</section>
+</main>
+
+<footer>
+  <p>Guía técnica del proceso de arranque Android. Verificar siempre con la versión concreta de Android, árbol AOSP y documentación del dispositivo.</p>
+</footer>
+
+<script src="script.js"></script>
 </body>
 </html>
