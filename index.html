@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Arranque de Android: Boot ROM → Zygote</title>
+  <link rel="stylesheet" href="styles.css" />
+  <meta name="description" content="Guía interactiva verificada del proceso de arranque de Android desde Boot ROM hasta Zygote, basada en documentación oficial AOSP/source.android.com." />
+</head>
+<body>
+  <header class="hero">
+    <nav class="nav">
+      <a href="#mapa">Mapa</a>
+      <a href="#timeline">Timeline</a>
+      <a href="#initrc">init.rc</a>
+      <a href="#forense">Notas forenses</a>
+      <a href="#fuentes">Fuentes</a>
+    </nav>
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow">Guía interactiva verificada · Android/AOSP</p>
+        <h1>Proceso de arranque de Android: desde Boot ROM hasta Zygote</h1>
+        <p class="lead">
+          Recorrido paso a paso por la cadena de arranque: Boot ROM, Bootloader,
+          carga del kernel, primer y segundo estadio de <code>init</code>, servicios nativos,
+          Zygote y arranque del System Server.
+        </p>
+        <div class="buttons">
+          <a class="button primary" href="#timeline">Empezar recorrido</a>
+          <a class="button secondary" href="#fuentes">Ver fuentes oficiales</a>
+        </div>
+      </div>
+      <div class="status-card">
+        <h2>Cadena resumida</h2>
+        <ol>
+          <li>Boot ROM ejecuta código inicial del SoC.</li>
+          <li>Bootloader inicializa memoria, verifica imágenes y elige slot.</li>
+          <li>Kernel Linux arranca con ramdisk / init_boot / vendor_boot según versión.</li>
+          <li><code>init</code> monta particiones, carga SELinux y ejecuta scripts <code>.rc</code>.</li>
+          <li>Zygote prepara ART y se convierte en raíz de procesos Java/Kotlin.</li>
+        </ol>
+        <p class="small">La secuencia exacta depende de versión Android, SoC, particiones, AVB, A/B y configuración del fabricante.</p>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section id="mapa" class="section">
+      <div class="section-title">
+        <p class="eyebrow">Diagrama animado</p>
+        <h2>Mapa del arranque</h2>
+        <p>Haz clic en una fase para ver su función, evidencias asociadas y documentación oficial.</p>
+      </div>
+
+      <div class="flow" id="flow">
+        <button class="node active" data-stage="rom">Boot ROM</button>
+        <span class="arrow">→</span>
+        <button class="node" data-stage="bootloader">Bootloader</button>
+        <span class="arrow">→</span>
+        <button class="node" data-stage="kernel">Kernel Loading</button>
+        <span class="arrow">→</span>
+        <button class="node" data-stage="init1">First-stage init</button>
+        <span class="arrow">→</span>
+        <button class="node" data-stage="init2">Second-stage init</button>
+        <span class="arrow">→</span>
+        <button class="node" data-stage="zygote">Zygote</button>
+      </div>
+
+      <article class="stage-card" id="stageCard"></article>
+    </section>
+
+    <section id="timeline" class="section alt">
+      <div class="section-title">
+        <p class="eyebrow">Timeline detallada</p>
+        <h2>Etapas críticas</h2>
+      </div>
+      <div class="timeline" id="timelineContainer"></div>
+    </section>
+
+    <section id="initrc" class="section">
+      <div class="section-title">
+        <p class="eyebrow">Ejemplo comentado</p>
+        <h2>Fragmento tipo de <code>init.rc</code></h2>
+        <p>
+          El lenguaje de Android Init se organiza en acciones, comandos, servicios, opciones e imports.
+          El ejemplo siguiente es didáctico y está basado en patrones oficiales de AOSP; no sustituye el
+          <code>init.rc</code> real de un dispositivo concreto.
+        </p>
+      </div>
+      <div class="code-layout">
+        <pre><code id="initCode"></code></pre>
+        <div class="explain" id="codeExplain"></div>
+      </div>
+    </section>
+
+    <section id="forense" class="section alt">
+      <div class="section-title">
+        <p class="eyebrow">Lectura forense</p>
+        <h2>Qué mirar sin inventar conclusiones</h2>
+      </div>
+      <div class="cards">
+        <article>
+          <h3>Bootloader / AVB</h3>
+          <p>Estado de bloqueo, verified boot state, particiones vbmeta/boot/vendor_boot/init_boot y coherencia con el modelo/versiones.</p>
+        </article>
+        <article>
+          <h3>Kernel / ramdisk</h3>
+          <p>Imagen de arranque, módulos tempranos, parámetros androidboot, ramdisk genérico/vendor y fstab.</p>
+        </article>
+        <article>
+          <h3>Init / persistencia</h3>
+          <p>Scripts <code>init*.rc</code>, servicios añadidos, clases, sockets, propiedades persistentes y binarios ejecutados por init.</p>
+        </article>
+        <article>
+          <h3>Zygote / apps</h3>
+          <p>Relación con procesos Java, System Server, app_process, clases de arranque y namespaces; no atribuir malware solo por presencia de Zygote.</p>
+        </article>
+      </div>
+      <p class="warning">
+        En análisis pericial: documentar versión, fuente del artefacto, hash, método de extracción, limitaciones y trazabilidad. No extrapolar un flujo AOSP genérico a un terminal concreto sin contrastar firmware, fabricante y particiones reales.
+      </p>
+    </section>
+
+    <section id="fuentes" class="section">
+      <div class="section-title">
+        <p class="eyebrow">Documentación oficial</p>
+        <h2>Fuentes contrastadas</h2>
+        <p>Enlaces directos a documentación oficial de Android/AOSP utilizada para construir la guía.</p>
+      </div>
+      <div class="source-grid" id="sources"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Guía generada para estudio técnico/forense. Revisar siempre contra la versión concreta de Android y el firmware del dispositivo analizado.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
